@@ -408,15 +408,23 @@ def page_pricing():
                 st.markdown("---")
 
                 if status == "Satıldı":
-                    st.success(f"**Ciro: ₺{o['sale_price']:,.2f}** | Kâr: ₺{o['profit']:,.2f}")
+                    actual = o.get('actual_sale_price') or o['sale_price']
+                    real_profit = actual - o['total_cost']
+                    diff = actual - o['sale_price']
+                    if diff >= 0:
+                        st.success(f"**Satış: ₺{actual:,.2f}** | Hesaplanan: ₺{o['sale_price']:,.2f} | Fark: +₺{diff:,.2f}")
+                    else:
+                        st.warning(f"**Satış: ₺{actual:,.2f}** | Hesaplanan: ₺{o['sale_price']:,.2f} | Fark: ₺{diff:,.2f}")
+                    st.markdown(f"**Maliyet: ₺{o['total_cost']:,.2f}** | **Gerçek Kâr: ₺{real_profit:,.2f}**")
                 elif status == "Hatalı Baskı":
                     st.error("Bu sipariş hatalı baskı olarak işaretlendi.")
                 else:
                     btn_col1, btn_col2, btn_col3 = st.columns(3)
                     with btn_col1:
+                        actual_price = st.number_input("Gerçek Satış Fiyatı (₺)", min_value=0.01, value=float(o['sale_price']), step=1.0, key=f"ap_{o['id']}")
                         if st.button("Satıldı", key=f"sold_{o['id']}", use_container_width=True, type="primary"):
                             try:
-                                db.mark_as_sold(o['id'])
+                                db.mark_as_sold(o['id'], actual_price)
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Hata: {e}")

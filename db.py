@@ -55,6 +55,7 @@ def init_db():
             profit REAL NOT NULL,
             quantity INTEGER NOT NULL DEFAULT 1,
             total_grams REAL NOT NULL DEFAULT 0,
+            actual_sale_price REAL DEFAULT NULL,
             status TEXT NOT NULL DEFAULT 'Tamamlandı',
             created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
@@ -102,6 +103,10 @@ def init_db():
         pass
     try:
         cursor.execute("ALTER TABLE filaments ADD COLUMN purchase_date TEXT NOT NULL DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE orders ADD COLUMN actual_sale_price REAL DEFAULT NULL")
     except Exception:
         pass
 
@@ -457,10 +462,13 @@ def mark_defective_print(order_id: int, elapsed_hours: float) -> dict:
     return {"consumed_grams": consumed_grams, "ratio": ratio, "elapsed_hours": elapsed_hours}
 
 
-def mark_as_sold(order_id: int):
+def mark_as_sold(order_id: int, actual_sale_price: float):
     conn = get_connection()
     try:
-        conn.execute("UPDATE orders SET status = 'Satıldı' WHERE id = ?", (order_id,))
+        conn.execute(
+            "UPDATE orders SET status = 'Satıldı', actual_sale_price = ? WHERE id = ?",
+            (actual_sale_price, order_id),
+        )
         conn.commit()
     finally:
         conn.close()
