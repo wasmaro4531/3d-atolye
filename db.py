@@ -35,8 +35,8 @@ def init_db():
             color TEXT NOT NULL,
             remaining_grams REAL NOT NULL DEFAULT 0,
             purchase_price REAL NOT NULL DEFAULT 0,
+            purchase_date TEXT NOT NULL,
             opening_date TEXT NOT NULL,
-            moisture_pct REAL NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
 
@@ -100,6 +100,10 @@ def init_db():
         cursor.execute("ALTER TABLE orders ADD COLUMN total_grams REAL NOT NULL DEFAULT 0")
     except Exception:
         pass
+    try:
+        cursor.execute("ALTER TABLE filaments ADD COLUMN purchase_date TEXT NOT NULL DEFAULT ''")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
@@ -136,14 +140,21 @@ def update_settings(electricity_price_kwh: float, printer_price: float, target_a
     conn.close()
 
 
-def add_filament(brand: str, material_type: str, color: str, remaining_grams: float, purchase_price: float, opening_date: str, moisture_pct: float):
+def add_filament(brand: str, material_type: str, color: str, remaining_grams: float, purchase_price: float, purchase_date: str, opening_date: str):
     conn = get_connection()
-    conn.execute(
-        "INSERT INTO filaments (brand, material_type, color, remaining_grams, purchase_price, opening_date, moisture_pct) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (brand, material_type, color, remaining_grams, purchase_price, opening_date, moisture_pct),
+    cursor = conn.execute(
+        "INSERT INTO filaments (brand, material_type, color, remaining_grams, purchase_price, purchase_date, opening_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (brand, material_type, color, remaining_grams, purchase_price, purchase_date, opening_date),
     )
+    filament_id = cursor.lastrowid
+    if purchase_price > 0:
+        conn.execute(
+            "INSERT INTO expenses (order_id, description, amount, category) VALUES (NULL, ?, ?, ?)",
+            (f"{brand} {color} Filament Alışı ({remaining_grams:.0f}g)", purchase_price, "Filament Alış"),
+        )
     conn.commit()
     conn.close()
+    return filament_id
 
 
 def get_all_filaments() -> list[dict]:
@@ -162,7 +173,7 @@ def get_filament_by_id(filament_id: int) -> dict | None:
 
 def update_filament(filament_id: int, **kwargs):
     conn = get_connection()
-    allowed = {"brand", "material_type", "color", "remaining_grams", "purchase_price", "opening_date", "moisture_pct"}
+    allowed = {"brand", "material_type", "color", "remaining_grams", "purchase_price", "purchase_date", "opening_date"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         conn.close()
@@ -396,11 +407,15 @@ def update_order_status(order_id: int, status: str):
 
 def delete_order(order_id: int):
     conn = get_connection()
-    conn.execute("DELETE FROM order_filaments WHERE order_id = ?", (order_id,))
-    conn.execute("DELETE FROM expenses WHERE order_id = ?", (order_id,))
-    conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("DELETE FROM order_filaments WHERE order_id = ?", (order_id,))
+        conn.execute("DELETE FROM expenses WHERE order_id = ?", (order_id,))
+        conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.close()
 
 
 def mark_defective_print(order_id: int, elapsed_hours: float) -> dict:
@@ -444,9 +459,11 @@ def mark_defective_print(order_id: int, elapsed_hours: float) -> dict:
 
 def mark_as_sold(order_id: int):
     conn = get_connection()
-    conn.execute("UPDATE orders SET status = 'Satıldı' WHERE id = ?", (order_id,))
-    conn.commit()
-    conn.close()
+    try:
+        conn.execute("UPDATE orders SET status = 'Satıldı' WHERE id = ?", (order_id,))
+        conn.commit()
+    finally:
+        conn.close()
 
 
 init_db()

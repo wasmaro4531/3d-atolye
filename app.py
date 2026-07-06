@@ -36,7 +36,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-EXPENSE_CATEGORIES = ["Anahtarlık Zinciri", "Hediye Paketi", "Tutkal", "Boya / Vernik", "Kutu / Ambalaj", "Kargo", "Diğer"]
+EXPENSE_CATEGORIES = ["Filament Alış", "Anahtarlık Zinciri", "Hediye Paketi", "Tutkal", "Boya / Vernik", "Kutu / Ambalaj", "Kargo", "Diğer"]
 
 
 def sidebar():
@@ -50,7 +50,7 @@ def sidebar():
         ], label_visibility="collapsed")
         st.markdown("---")
         st.caption("v2.0 | Bambu Lab A1 Optimized")
-        st.caption("Kerem Malkoç & Gürkan Şimşek ortaklığıdır.")
+        st.caption("Kerem Malkoç & Gürkan Şimşek ortaklığıdır! ©®")
     return page
 
 
@@ -132,13 +132,13 @@ def page_filament():
             with c2:
                 remaining_grams = st.number_input("Gramaj (g)", min_value=1.0, value=1000.0, step=10.0)
                 purchase_price = st.number_input("Alış Fiyatı (₺)", min_value=0.0, value=350.0, step=10.0)
+                purchase_date = st.date_input("Alış Tarihi", value=date.today())
                 opening_date = st.date_input("Açılış Tarihi", value=date.today())
-                moisture_pct = st.number_input("Nem (%)", min_value=0.0, max_value=100.0, value=0.0, step=0.1)
             if st.form_submit_button("🧵 Filament Ekle", use_container_width=True, type="primary"):
                 if not brand or not color:
                     st.error("Marka ve Renk zorunludur.")
                 else:
-                    db.add_filament(brand, material_type, color, remaining_grams, purchase_price, opening_date.strftime("%Y-%m-%d"), moisture_pct)
+                    db.add_filament(brand, material_type, color, remaining_grams, purchase_price, purchase_date.strftime("%Y-%m-%d"), opening_date.strftime("%Y-%m-%d"))
                     st.success(f"✅ {brand} {color} eklendi!")
                     st.rerun()
 
@@ -160,17 +160,15 @@ def page_filament():
                 c1.metric("Kalan Gram", f"{f['remaining_grams']:.0f}g")
                 c2.metric("Birim Fiyat", f"₺{gp:.2f}/g")
                 c3.metric("Toplam Değer", f"₺{f['remaining_grams'] * gp:,.2f}")
-                st.caption(f"Açılış: {f['opening_date']} | Nem: {f['moisture_pct']}%")
+                st.caption(f"Alış: {f.get('purchase_date', 'N/A')} | Açılış: {f['opening_date']}")
                 with st.form(key=f"edit_{f['id']}"):
                     ec1, ec2 = st.columns(2)
                     with ec1:
                         new_grams = st.number_input("Gram", value=float(f["remaining_grams"]), min_value=0.0, step=10.0, key=f"eg_{f['id']}")
                         new_price = st.number_input("Fiyat (₺)", value=float(f["purchase_price"]), min_value=0.0, step=10.0, key=f"ep_{f['id']}")
-                    with ec2:
-                        new_moisture = st.number_input("Nem (%)", value=float(f["moisture_pct"]), min_value=0.0, max_value=100.0, step=0.1, key=f"em_{f['id']}")
                     fc1, fc2 = st.columns(2)
                     if fc1.form_submit_button("💾 Güncelle", use_container_width=True):
-                        db.update_filament(f["id"], remaining_grams=new_grams, purchase_price=new_price, moisture_pct=new_moisture)
+                        db.update_filament(f["id"], remaining_grams=new_grams, purchase_price=new_price)
                         st.success("Güncellendi!"); st.rerun()
                     if fc2.form_submit_button("🗑️ Sil", use_container_width=True, type="secondary"):
                         db.delete_filament(f["id"]); st.warning("Silindi."); st.rerun()
@@ -417,21 +415,30 @@ def page_pricing():
                     btn_col1, btn_col2, btn_col3 = st.columns(3)
                     with btn_col1:
                         if st.button("Satıldı", key=f"sold_{o['id']}", use_container_width=True, type="primary"):
-                            db.mark_as_sold(o['id'])
-                            st.rerun()
+                            try:
+                                db.mark_as_sold(o['id'])
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Hata: {e}")
                     with btn_col2:
                         elapsed = st.number_input("Geçen Süre (saat)", min_value=0.01, max_value=float(o['print_duration_hours']), value=float(o['print_duration_hours']), step=0.25, key=f"elapsed_{o['id']}")
                         if st.button("Hatalı Baskı", key=f"def_{o['id']}", use_container_width=True):
-                            result = db.mark_defective_print(o['id'], elapsed)
-                            if "error" in result:
-                                st.error(result["error"])
-                            else:
-                                st.warning(f"Hatalı baskı! {result['consumed_grams']:.1f}g filament harcandı (geçen: {elapsed}sa / toplam: {o['print_duration_hours']}sa)")
-                                st.rerun()
+                            try:
+                                result = db.mark_defective_print(o['id'], elapsed)
+                                if "error" in result:
+                                    st.error(result["error"])
+                                else:
+                                    st.warning(f"Hatalı baskı! {result['consumed_grams']:.1f}g filament harcandı (geçen: {elapsed}sa / toplam: {o['print_duration_hours']}sa)")
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Hata: {e}")
                     with btn_col3:
                         if st.button("Sil", key=f"del_{o['id']}", use_container_width=True):
-                            db.delete_order(o['id'])
-                            st.rerun()
+                            try:
+                                db.delete_order(o['id'])
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Hata: {e}")
 
 
 def page_expenses():
