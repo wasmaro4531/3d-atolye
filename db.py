@@ -507,15 +507,14 @@ def revert_order_status(order_id: int):
 
 def reset_database():
     conn = get_connection()
-    conn.execute("PRAGMA foreign_keys = OFF")
-    conn.execute("DELETE FROM order_filaments")
-    conn.execute("DELETE FROM expenses")
-    conn.execute("DELETE FROM orders")
-    conn.execute("DELETE FROM filaments")
-    conn.execute("DELETE FROM gcode_analyses")
-    conn.execute("DELETE FROM settings")
-    conn.execute("INSERT INTO settings (id) VALUES (1)")
-    conn.execute("PRAGMA foreign_keys = ON")
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM order_filaments")
+    cursor.execute("DELETE FROM expenses")
+    cursor.execute("DELETE FROM orders")
+    cursor.execute("DELETE FROM filaments")
+    cursor.execute("DELETE FROM gcode_analyses")
+    cursor.execute("DELETE FROM settings")
+    cursor.execute("INSERT INTO settings (id) VALUES (1)")
     conn.commit()
     conn.close()
 
