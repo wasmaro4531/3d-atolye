@@ -58,15 +58,36 @@ def page_dashboard():
     st.title("📊 Dashboard")
     st.markdown("---")
     summary = db.get_revenue_summary()
+    actual = db.get_actual_sales_summary()
     filaments = db.get_all_filaments()
     expense_summary = db.get_expense_summary()
 
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Toplam Sipariş", summary["total_orders"])
-    c2.metric("Toplam Ciro", f"₺{summary['total_revenue']:,.2f}")
+    c2.metric("Hesaplanan Ciro", f"₺{summary['total_revenue']:,.2f}")
     c3.metric("Toplam Maliyet", f"₺{summary['total_cost']:,.2f}")
-    c4.metric("Toplam Kâr", f"₺{summary['total_profit']:,.2f}")
+    c4.metric("Hesaplanan Kâr", f"₺{summary['total_profit']:,.2f}")
     c5.metric("Toplam Gider", f"₺{expense_summary['total_expenses']:,.2f}")
+
+    st.markdown("---")
+    st.subheader("💰 Gerçek Satış Analizi (Satılanlar)")
+    if actual["sold_count"] > 0:
+        a1, a2, a3, a4, a5 = st.columns(5)
+        a1.metric("Satılan Adet", f"{actual['sold_count']}")
+        a2.metric("Gerçek Ciro", f"₺{actual['actual_revenue']:,.2f}")
+        a3.metric("Satılanların Maliyeti", f"₺{actual['sold_cost']:,.2f}")
+        real_p = actual['actual_profit']
+        if real_p >= 0:
+            a4.metric("GERÇEK KÂR", f"₺{real_p:,.2f}")
+        else:
+            a4.metric("GERÇEK ZARAR", f"-₺{abs(real_p):,.2f}")
+        diff = actual['price_diff']
+        if diff >= 0:
+            a5.metric("Fiyat Farkı", f"+₺{diff:,.2f}")
+        else:
+            a5.metric("Fiyat Farkı", f"-₺{abs(diff):,.2f}")
+    else:
+        st.info("Henüz satılmış sipariş yok.")
 
     st.markdown("---")
     col_left, col_right = st.columns(2)
@@ -112,7 +133,14 @@ def page_dashboard():
     if orders:
         for o in orders[:5]:
             fil_str = ", ".join([f"{f['brand']} {f['color']} ({f['grams_used']}g)" for f in o.get("filaments", [])])
-            st.markdown(f"**{o['product_name']}** | {fil_str} | ₺{o['sale_price']:,.2f} | Kâr: ₺{o['profit']:,.2f} | {o['created_at']}")
+            status = o.get("status", "Tamamlandı")
+            status_icon = {"Tamamlandı": "🟢", "Satıldı": "💰", "Hatalı Baskı": "🔴"}.get(status, "⚪")
+            if status == "Satıldı" and o.get("actual_sale_price"):
+                real_p = o["actual_sale_price"] - o["total_cost"]
+                diff = o["actual_sale_price"] - o["sale_price"]
+                st.markdown(f"{status_icon} **{o['product_name']}** | {fil_str} | Satış: ₺{o['actual_sale_price']:,.2f} (hesap: ₺{o['sale_price']:,.2f}) | Fark: {'+'if diff>=0 else ''}₺{diff:,.2f} | Kâr: ₺{real_p:,.2f} | {o['created_at']}")
+            else:
+                st.markdown(f"{status_icon} **{o['product_name']}** | {fil_str} | ₺{o['sale_price']:,.2f} | Kâr: ₺{o['profit']:,.2f} | {status} | {o['created_at']}")
     else:
         st.info("Henüz sipariş yok.")
 

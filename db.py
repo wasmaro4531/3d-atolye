@@ -295,6 +295,25 @@ def get_revenue_summary() -> dict:
     }
 
 
+def get_actual_sales_summary() -> dict:
+    conn = get_connection()
+    row = conn.execute("""
+        SELECT
+            COUNT(*) as sold_count,
+            COALESCE(SUM(actual_sale_price), 0) as actual_revenue,
+            COALESCE(SUM(total_cost), 0) as sold_cost,
+            COALESCE(SUM(actual_sale_price - total_cost), 0) as actual_profit,
+            COALESCE(SUM(actual_sale_price - sale_price), 0) as price_diff
+        FROM orders
+        WHERE status = 'Satıldı' AND actual_sale_price IS NOT NULL
+    """).fetchone()
+    conn.close()
+    return dict(row) if row else {
+        "sold_count": 0, "actual_revenue": 0, "sold_cost": 0,
+        "actual_profit": 0, "price_diff": 0,
+    }
+
+
 def get_monthly_revenue() -> list[dict]:
     conn = get_connection()
     rows = conn.execute("""
