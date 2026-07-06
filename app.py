@@ -50,6 +50,7 @@ def sidebar():
         ], label_visibility="collapsed")
         st.markdown("---")
         st.caption("v2.0 | Bambu Lab A1 Optimized")
+        st.caption("Kerem Malkoç & Gürkan Şimşek ortaklığıdır.")
     return page
 
 
@@ -240,106 +241,197 @@ def page_pricing():
 
     f_opts = {f"{f['brand']} {f['color']} ({f['material_type']}) - {f['remaining_grams']:.0f}g": f for f in filaments}
 
-    st.subheader("1. Ürün Bilgileri")
-    product_name = st.text_input("Ürün Adı", placeholder="ör: Telefon Kılıfı, Anahtarlık, Vazo")
+    tab_create, tab_manage = st.tabs(["➕ Sipariş Oluştur", "📋 Sipariş Yönetimi"])
 
-    st.markdown("---")
-    st.subheader("2. Filament Seçimi (Birden Fazla)")
-    sel_fil = st.multiselect("Kullanılacak filamentleri seçin", list(f_opts.keys()))
-    fil_items = []
-    if sel_fil:
-        for label in sel_fil:
-            f = f_opts[label]; gp = calculate_gram_price(f["purchase_price"])
-            c1, c2, c3 = st.columns([3, 2, 2])
-            with c1:
-                st.markdown(f"**{f['brand']} {f['color']}** ({f['material_type']})")
-                st.caption(f"₺{gp:.2f}/g | Stok: {f['remaining_grams']:.0f}g")
-            with c2:
-                grams = st.number_input("Gramaj (g)", min_value=1.0, value=50.0, step=1.0, key=f"og_{f['id']}")
-            with c3:
-                st.metric("Maliyet", f"₺{grams * gp:,.2f}")
-            fil_items.append({"filament_id": f["id"], "brand": f["brand"], "color": f["color"], "material_type": f["material_type"],
-                              "grams_used": grams, "gram_price": gp, "filament_cost": round(grams * gp, 2), "remaining": f["remaining_grams"]})
+    with tab_create:
+        st.subheader("1. Ürün Bilgileri")
+        c_name, c_qty = st.columns([3, 1])
+        with c_name:
+            product_name = st.text_input("Ürün Adı", placeholder="ör: Telefon Kılıfı, Anahtarlık, Vazo")
+        with c_qty:
+            quantity = st.number_input("Adet", min_value=1, value=1, step=1)
 
-    st.markdown("---")
-    st.subheader("3. Baskı Süresi & Kâr Marjı")
-    c1, c2 = st.columns(2)
-    with c1: print_hours = st.number_input("Baskı Süresi (saat)", min_value=0.01, value=2.0, step=0.25)
-    with c2: profit_margin = st.number_input("Kâr Marjı (%)", min_value=0.0, value=50.0, step=5.0)
-
-    st.markdown("---")
-    st.subheader("4. Ek Giderler")
-    st.caption("Anahtarlık zinciri, hediye paketi, kargo vb.")
-    if "order_expenses" not in st.session_state:
-        st.session_state.order_expenses = []
-
-    for i in range(len(st.session_state.order_expenses)):
-        ecols = st.columns([3, 2, 2, 1])
-        with ecols[0]:
-            st.session_state.order_expenses[i]["description"] = st.text_input("Açıklama", value=st.session_state.order_expenses[i]["description"], key=f"od_{i}", label_visibility="collapsed", placeholder="ör: 2 adet zincir")
-        with ecols[1]:
-            idx = EXPENSE_CATEGORIES.index(st.session_state.order_expenses[i]["category"]) if st.session_state.order_expenses[i]["category"] in EXPENSE_CATEGORIES else 6
-            st.session_state.order_expenses[i]["category"] = st.selectbox("Kategori", EXPENSE_CATEGORIES, index=idx, key=f"oc_{i}", label_visibility="collapsed")
-        with ecols[2]:
-            st.session_state.order_expenses[i]["amount"] = st.number_input("Tutar", value=st.session_state.order_expenses[i]["amount"], min_value=0.0, step=0.5, key=f"oa_{i}", label_visibility="collapsed")
-        with ecols[3]:
-            if st.button("🗑️", key=f"ox_{i}"):
-                st.session_state.order_expenses.pop(i); st.rerun()
-
-    if st.button("➕ Gider Kalemi Ekle", key="add_oe"):
-        st.session_state.order_expenses.append({"description": "", "category": "Diğer", "amount": 0.0}); st.rerun()
-
-    if fil_items:
         st.markdown("---")
-        st.subheader("5. Maliyet & Fiyat Analizi")
-        fc = sum(i["filament_cost"] for i in fil_items)
-        exp_clean = [e for e in st.session_state.order_expenses if e.get("amount", 0) > 0]
-        te = sum(e["amount"] for e in exp_clean)
-        cost = calculate_total_cost_with_expenses(fc, print_hours, settings["electricity_price_kwh"], settings["printer_price"], settings["target_amortization_hours"], te, settings["power_watts"])
-        sp = calculate_sale_price(cost["total_cost"], profit_margin)
-        pa = calculate_profit(sp, cost["total_cost"])
+        st.subheader("2. Filament Seçimi (Toplam Gram)")
+        st.caption("Toplam harcanan filament gramını girin. Adet sayısına bölünerek birim maliyet hesaplanır.")
+        sel_fil = st.multiselect("Kullanılacak filamentleri seçin", list(f_opts.keys()))
+        fil_items = []
+        if sel_fil:
+            for label in sel_fil:
+                f = f_opts[label]; gp = calculate_gram_price(f["purchase_price"])
+                c1, c2, c3, c4 = st.columns([3, 2, 2, 2])
+                with c1:
+                    st.markdown(f"**{f['brand']} {f['color']}** ({f['material_type']})")
+                    st.caption(f"₺{gp:.2f}/g | Stok: {f['remaining_grams']:.0f}g")
+                with c2:
+                    total_g = st.number_input("Toplam Gram (g)", min_value=1.0, value=50.0, step=1.0, key=f"og_{f['id']}")
+                with c3:
+                    unit_g = total_g / quantity if quantity > 0 else 0
+                    st.metric("Birim", f"{unit_g:.1f}g/adet")
+                with c4:
+                    st.metric("Toplam Maliyet", f"₺{total_g * gp:,.2f}")
+                fil_items.append({"filament_id": f["id"], "brand": f["brand"], "color": f["color"], "material_type": f["material_type"],
+                                  "grams_used": total_g, "gram_price": gp, "filament_cost": round(total_g * gp, 2), "remaining": f["remaining_grams"]})
 
-        cc, ct = st.columns([1, 1])
-        with cc:
-            fig = go.Figure(data=[go.Pie(labels=["Filament", "Elektrik", "Amortisman", "Ek Giderler"],
-                values=[cost["filament_cost"], cost["electricity_cost"], cost["amortization_cost"], cost["expense_cost"]],
-                hole=0.4, marker_colors=["#667eea", "#f093fb", "#4ade80", "#fbbf24"])])
-            fig.update_layout(height=280, margin=dict(t=20, b=20))
-            st.plotly_chart(fig, use_container_width=True)
-        with ct:
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Net Maliyet", f"₺{cost['total_cost']:,.2f}"); m2.metric("Satış Fiyatı", f"₺{sp:,.2f}")
-            m3.metric("Kâr", f"₺{pa:,.2f}"); m4.metric("Marj", f"%{profit_margin:.0f}")
+        st.markdown("---")
+        st.subheader("3. Baskı Süresi & Kâr Marjı")
+        c1, c2 = st.columns(2)
+        with c1: print_hours = st.number_input("Baskı Süresi (saat)", min_value=0.01, value=2.0, step=0.25)
+        with c2: profit_margin = st.number_input("Kâr Marjı (%)", min_value=0.0, value=50.0, step=5.0)
+
+        st.markdown("---")
+        st.subheader("4. Ek Giderler")
+        st.caption("Anahtarlık zinciri, hediye paketi, kargo vb.")
+        if "order_expenses" not in st.session_state:
+            st.session_state.order_expenses = []
+
+        for i in range(len(st.session_state.order_expenses)):
+            ecols = st.columns([3, 2, 2, 1])
+            with ecols[0]:
+                st.session_state.order_expenses[i]["description"] = st.text_input("Açıklama", value=st.session_state.order_expenses[i]["description"], key=f"od_{i}", label_visibility="collapsed", placeholder="ör: 2 adet zincir")
+            with ecols[1]:
+                idx = EXPENSE_CATEGORIES.index(st.session_state.order_expenses[i]["category"]) if st.session_state.order_expenses[i]["category"] in EXPENSE_CATEGORIES else 6
+                st.session_state.order_expenses[i]["category"] = st.selectbox("Kategori", EXPENSE_CATEGORIES, index=idx, key=f"oc_{i}", label_visibility="collapsed")
+            with ecols[2]:
+                st.session_state.order_expenses[i]["amount"] = st.number_input("Tutar", value=st.session_state.order_expenses[i]["amount"], min_value=0.0, step=0.5, key=f"oa_{i}", label_visibility="collapsed")
+            with ecols[3]:
+                if st.button("🗑️", key=f"ox_{i}"):
+                    st.session_state.order_expenses.pop(i); st.rerun()
+
+        if st.button("➕ Gider Kalemi Ekle", key="add_oe"):
+            st.session_state.order_expenses.append({"description": "", "category": "Diğer", "amount": 0.0}); st.rerun()
+
+        if fil_items:
             st.markdown("---")
-            lines = [f"**{product_name or 'Ürün'}**"]
-            for i in fil_items:
-                lines.append(f"  ├─ {i['brand']} {i['color']} ({i['grams_used']}g) → ₺{i['filament_cost']:,.2f}")
-            lines.append(f"  ├─ Elektrik ({print_hours}sa) → ₺{cost['electricity_cost']:,.2f}")
-            lines.append(f"  ├─ Amortisman → ₺{cost['amortization_cost']:,.2f}")
-            for e in exp_clean:
-                lines.append(f"  ├─ {e['description'] or e['category']} → ₺{e['amount']:,.2f}")
-            lines += [f"  **Net Maliyet → ₺{cost['total_cost']:,.2f}**", f"  Kâr → +₺{pa:,.2f}", f"  **Satış → ₺{sp:,.2f}**"]
-            st.markdown("\n".join(lines))
+            st.subheader("5. Maliyet & Fiyat Analizi")
+            total_grams_sum = sum(i["grams_used"] for i in fil_items)
+            fc = sum(i["filament_cost"] for i in fil_items)
+            exp_clean = [e for e in st.session_state.order_expenses if e.get("amount", 0) > 0]
+            te = sum(e["amount"] for e in exp_clean)
+            cost = calculate_total_cost_with_expenses(fc, print_hours, settings["electricity_price_kwh"], settings["printer_price"], settings["target_amortization_hours"], te, settings["power_watts"])
+            sp = calculate_sale_price(cost["total_cost"], profit_margin)
+            pa = calculate_profit(sp, cost["total_cost"])
+            unit_cost = cost["total_cost"] / quantity if quantity > 0 else 0
 
-        st.markdown("---")
-        stock_ok = all(i["grams_used"] <= i["remaining"] for i in fil_items)
-        if not stock_ok:
-            st.error("⚠️ Yetersiz stok!")
-            for i in fil_items:
-                if i["grams_used"] > i["remaining"]:
-                    st.error(f"  • {i['brand']} {i['color']}: {i['grams_used']}g isteniyor, {i['remaining']:.0f}g kaldı")
+            cc, ct = st.columns([1, 1])
+            with cc:
+                fig = go.Figure(data=[go.Pie(labels=["Filament", "Elektrik", "Amortisman", "Ek Giderler"],
+                    values=[cost["filament_cost"], cost["electricity_cost"], cost["amortization_cost"], cost["expense_cost"]],
+                    hole=0.4, marker_colors=["#667eea", "#f093fb", "#4ade80", "#fbbf24"])])
+                fig.update_layout(height=280, margin=dict(t=20, b=20))
+                st.plotly_chart(fig, use_container_width=True)
+            with ct:
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Toplam Maliyet", f"₺{cost['total_cost']:,.2f}"); m2.metric("Birim Maliyet", f"₺{unit_cost:,.2f}")
+                m3.metric("Toplam Satış", f"₺{sp:,.2f}"); m4.metric("Toplam Kâr", f"₺{pa:,.2f}")
+                m5, m6 = st.columns(2)
+                m5.metric("Birim Satış", f"₺{sp / quantity:,.2f}" if quantity > 0 else "₺0")
+                m6.metric("Birim Kâr", f"₺{pa / quantity:,.2f}" if quantity > 0 else "₺0")
+                st.markdown("---")
+                lines = [f"**{product_name or 'Ürün'}** ({quantity} adet)"]
+                if quantity > 0:
+                    lines.append(f"  Toplam: {total_grams_sum:.0f}g | Birim: {total_grams_sum / quantity:.1f}g/adet")
+                else:
+                    lines.append(f"  Toplam: {total_grams_sum:.0f}g")
+                for i in fil_items:
+                    unit_i = i['grams_used'] / quantity if quantity > 0 else i['grams_used']
+                    lines.append(f"  ├─ {i['brand']} {i['color']} ({i['grams_used']}g → {unit_i:.1f}g/adet) → ₺{i['filament_cost']:,.2f}")
+                lines.append(f"  ├─ Elektrik ({print_hours}sa) → ₺{cost['electricity_cost']:,.2f}")
+                lines.append(f"  ├─ Amortisman → ₺{cost['amortization_cost']:,.2f}")
+                for e in exp_clean:
+                    lines.append(f"  ├─ {e['description'] or e['category']} → ₺{e['amount']:,.2f}")
+                lines += [f"  **Toplam Maliyet → ₺{cost['total_cost']:,.2f}**", f"  **Birim Maliyet → ₺{unit_cost:,.2f}**",
+                          f"  Kâr (toplam) → +₺{pa:,.2f} | Birim → +₺{pa / quantity:,.2f}" if quantity > 0 else f"  Kâr → +₺{pa:,.2f}",
+                          f"  **Satış (toplam) → ₺{sp:,.2f}** | Birim → ₺{sp / quantity:,.2f}" if quantity > 0 else f"  **Satış → ₺{sp:,.2f}**"]
+                st.markdown("\n".join(lines))
 
-        if st.button("🛒 Siparişi Onayla ve Üret", type="primary", use_container_width=True, disabled=not stock_ok or not product_name):
-            if not product_name:
-                st.error("Ürün adı girin.")
-            elif not fil_items:
-                st.error("En az bir filament seçin.")
-            else:
-                oid = db.add_order(product_name, print_hours, json.dumps(cost), cost["filament_cost"], cost["expense_cost"],
-                    cost["electricity_cost"], cost["amortization_cost"], cost["total_cost"], sp, profit_margin, pa, fil_items, exp_clean)
-                st.session_state.order_expenses = []
-                st.success(f"✅ **{product_name}** siparişi oluşturuldu! (#{oid})\n\nSatış: ₺{sp:,.2f} | Kâr: ₺{pa:,.2f} | {len(fil_items)} filament düşüldü")
-                st.balloons(); st.rerun()
+            st.markdown("---")
+            stock_ok = all(i["grams_used"] <= i["remaining"] for i in fil_items)
+            if not stock_ok:
+                st.error("⚠️ Yetersiz stok!")
+                for i in fil_items:
+                    if i["grams_used"] > i["remaining"]:
+                        st.error(f"  • {i['brand']} {i['color']}: {i['grams_used']}g isteniyor, {i['remaining']:.0f}g kaldı")
+
+            if st.button("🛒 Siparişi Onayla ve Üret", type="primary", use_container_width=True, disabled=not stock_ok or not product_name):
+                if not product_name:
+                    st.error("Ürün adı girin.")
+                elif not fil_items:
+                    st.error("En az bir filament seçin.")
+                else:
+                    oid = db.add_order(product_name, print_hours, json.dumps(cost), cost["filament_cost"], cost["expense_cost"],
+                        cost["electricity_cost"], cost["amortization_cost"], cost["total_cost"], sp, profit_margin, pa, fil_items, exp_clean, quantity, total_grams_sum)
+                    st.session_state.order_expenses = []
+                    st.success(f"✅ **{product_name}** siparişi oluşturuldu! (#{oid})\n\n{quantity} adet | Toplam: ₺{sp:,.2f} | Birim: ₺{sp/quantity:,.2f} | Kâr: ₺{pa:,.2f}")
+                    st.balloons(); st.rerun()
+
+    with tab_manage:
+        st.subheader("📋 Tüm Siparişler")
+        orders = db.get_all_orders()
+        if not orders:
+            st.info("Henüz sipariş yok."); return
+
+        for o in orders:
+            status = o.get("status", "Tamamlandı")
+            status_colors = {"Tamamlandı": "🟢", "Satıldı": "💰", "Hatalı Baskı": "🔴"}
+            status_icon = status_colors.get(status, "⚪")
+            qty = o.get("quantity", 1)
+            total_g = o.get("total_grams", 0)
+
+            with st.expander(f"{status_icon} #{o['id']} {o['product_name']} | {qty} adet | ₺{o['sale_price']:,.2f} | {status} | {o['created_at']}"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"**Ürün:** {o['product_name']}")
+                    st.markdown(f"**Adet:** {qty}")
+                    st.markdown(f"**Toplam Gram:** {total_g:.0f}g")
+                    if qty > 0:
+                        st.markdown(f"**Birim Gram:** {total_g / qty:.1f}g")
+                    st.markdown(f"**Baskı Süresi:** {o['print_duration_hours']} saat")
+                    st.markdown(f"**Toplam Maliyet:** ₺{o['total_cost']:,.2f}")
+                    if qty > 0:
+                        st.markdown(f"**Birim Maliyet:** ₺{o['total_cost'] / qty:,.2f}")
+                with col2:
+                    st.markdown(f"**Satış Fiyatı:** ₺{o['sale_price']:,.2f}")
+                    if qty > 0:
+                        st.markdown(f"**Birim Satış:** ₺{o['sale_price'] / qty:,.2f}")
+                    st.markdown(f"**Kâr:** ₺{o['profit']:,.2f}")
+                    if qty > 0:
+                        st.markdown(f"**Birim Kâr:** ₺{o['profit'] / qty:,.2f}")
+                    st.markdown(f"**Durum:** {status_icon} {status}")
+
+                fil_str = ", ".join([f"{f['brand']} {f['color']} ({f['grams_used']}g)" for f in o.get("filaments", [])])
+                if fil_str:
+                    st.markdown(f"**Filament:** {fil_str}")
+
+                if o.get("expenses"):
+                    exp_str = ", ".join([f"{e['description']} (₺{e['amount']:,.2f})" for e in o["expenses"]])
+                    st.markdown(f"**Ek Giderler:** {exp_str}")
+
+                st.markdown("---")
+
+                if status == "Satıldı":
+                    st.success(f"**Ciro: ₺{o['sale_price']:,.2f}** | Kâr: ₺{o['profit']:,.2f}")
+                elif status == "Hatalı Baskı":
+                    st.error("Bu sipariş hatalı baskı olarak işaretlendi.")
+                else:
+                    btn_col1, btn_col2, btn_col3 = st.columns(3)
+                    with btn_col1:
+                        if st.button("Satıldı", key=f"sold_{o['id']}", use_container_width=True, type="primary"):
+                            db.mark_as_sold(o['id'])
+                            st.rerun()
+                    with btn_col2:
+                        elapsed = st.number_input("Geçen Süre (saat)", min_value=0.01, max_value=float(o['print_duration_hours']), value=float(o['print_duration_hours']), step=0.25, key=f"elapsed_{o['id']}")
+                        if st.button("Hatalı Baskı", key=f"def_{o['id']}", use_container_width=True):
+                            result = db.mark_defective_print(o['id'], elapsed)
+                            if "error" in result:
+                                st.error(result["error"])
+                            else:
+                                st.warning(f"Hatalı baskı! {result['consumed_grams']:.1f}g filament harcandı (geçen: {elapsed}sa / toplam: {o['print_duration_hours']}sa)")
+                                st.rerun()
+                    with btn_col3:
+                        if st.button("Sil", key=f"del_{o['id']}", use_container_width=True):
+                            db.delete_order(o['id'])
+                            st.rerun()
 
 
 def page_expenses():

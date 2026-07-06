@@ -53,6 +53,8 @@ def init_db():
             sale_price REAL NOT NULL,
             profit_margin_pct REAL NOT NULL,
             profit REAL NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            total_grams REAL NOT NULL DEFAULT 0,
             status TEXT NOT NULL DEFAULT 'Tamamlandı',
             created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
@@ -89,6 +91,15 @@ def init_db():
 
         INSERT OR IGNORE INTO settings (id) VALUES (1);
     """)
+
+    try:
+        cursor.execute("ALTER TABLE orders ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE orders ADD COLUMN total_grams REAL NOT NULL DEFAULT 0")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
@@ -184,17 +195,19 @@ def add_order(
     profit: float,
     filament_items: list[dict],
     expense_items: list[dict],
+    quantity: int = 1,
+    total_grams: float = 0,
 ):
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO orders
            (product_name, print_duration_hours, cost_breakdown, total_filament_cost,
             total_expense_cost, electricity_cost, amortization_cost, total_cost,
-            sale_price, profit_margin_pct, profit)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            sale_price, profit_margin_pct, profit, quantity, total_grams)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (product_name, print_duration_hours, cost_breakdown, total_filament_cost,
          total_expense_cost, electricity_cost, amortization_cost, total_cost,
-         sale_price, profit_margin_pct, profit),
+         sale_price, profit_margin_pct, profit, quantity, total_grams),
     )
     order_id = cursor.lastrowid
 
@@ -359,6 +372,81 @@ def get_expenses_by_category() -> list[dict]:
     """).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def get_order_by_id(order_id: int) -> dict | None:
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    if row:
+        order = dict(row)
+        order["filaments"] = get_order_filaments(order["id"])
+        order["expenses"] = get_order_expenses(order["id"])
+        conn.close()
+        return order
+    conn.close()
+    return None
+
+
+def update_order_status(order_id: int, status: str):
+    conn = get_connection()
+    conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
+    conn.commit()
+    conn.close()
+
+
+def delete_order(order_id: int):
+    conn = get_connection()
+    conn.execute("DELETE FROM order_filaments WHERE order_id = ?", (order_id,))
+    conn.execute("DELETE FROM expenses WHERE order_id = ?", (order_id,))
+    conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
+    conn.commit()
+    conn.close()
+
+
+def mark_defective_print(order_id: int, elapsed_hours: float) -> dict:
+    conn = get_connection()
+    order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    if not order:
+        conn.close()
+        return {"error": "Sipariş bulunamadı"}
+
+    order = dict(order)
+    total_hours = order["print_duration_hours"]
+    total_grams = order["total_grams"]
+
+    if total_hours <= 0:
+        conn.close()
+        return {"error": "Baskı süresi geçersiz"}
+
+    ratio = min(elapsed_hours / total_hours, 1.0)
+    consumed_grams = round(total_grams * ratio, 2)
+
+    filaments = conn.execute(
+        "SELECT * FROM order_filaments WHERE order_id = ?", (order_id,)
+    ).fetchall()
+
+    for f in filaments:
+        f_ratio = f["grams_used"] / total_grams if total_grams > 0 else 0
+        fil_consumed = round(consumed_grams * f_ratio, 2)
+        conn.execute(
+            "UPDATE filaments SET remaining_grams = MAX(remaining_grams - ?, 0) WHERE id = ?",
+            (fil_consumed, f["filament_id"]),
+        )
+
+    conn.execute(
+        "UPDATE orders SET status = 'Hatalı Baskı' WHERE id = ?", (order_id,)
+    )
+    conn.commit()
+    conn.close()
+
+    return {"consumed_grams": consumed_grams, "ratio": ratio, "elapsed_hours": elapsed_hours}
+
+
+def mark_as_sold(order_id: int):
+    conn = get_connection()
+    conn.execute("UPDATE orders SET status = 'Satıldı' WHERE id = ?", (order_id,))
+    conn.commit()
+    conn.close()
 
 
 init_db()
