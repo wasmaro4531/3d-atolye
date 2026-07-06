@@ -355,7 +355,7 @@ def page_expenses():
                 exp_desc = st.text_input("Açıklama", placeholder="ör: 10 adet kargo kutusu")
                 exp_cat = st.selectbox("Kategori", EXPENSE_CATEGORIES)
             with c2:
-                exp_amt = st.number_input("Tutar (₺)", min_value=0.01, value=0.0, step=0.5)
+                exp_amt = st.number_input("Tutar (₺)", min_value=0.01, value=0.01, step=0.5)
             if st.form_submit_button("💾 Kaydet", use_container_width=True, type="primary"):
                 if not exp_desc: st.error("Açıklama zorunludur.")
                 elif exp_amt <= 0: st.error("Tutar > 0 olmalı.")
