@@ -493,4 +493,31 @@ def mark_as_sold(order_id: int, actual_sale_price: float):
         conn.close()
 
 
+def revert_order_status(order_id: int):
+    conn = get_connection()
+    try:
+        conn.execute(
+            "UPDATE orders SET status = 'Tamamlandı', actual_sale_price = NULL WHERE id = ?",
+            (order_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def reset_database():
+    conn = get_connection()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("DELETE FROM order_filaments")
+    conn.execute("DELETE FROM expenses")
+    conn.execute("DELETE FROM orders")
+    conn.execute("DELETE FROM filaments")
+    conn.execute("DELETE FROM gcode_analyses")
+    conn.execute("DELETE FROM settings")
+    conn.execute("INSERT INTO settings (id) VALUES (1)")
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.commit()
+    conn.close()
+
+
 init_db()

@@ -444,6 +444,12 @@ def page_pricing():
                     else:
                         st.warning(f"**Satış: ₺{actual:,.2f}** | Hesaplanan: ₺{o['sale_price']:,.2f} | Fark: ₺{diff:,.2f}")
                     st.markdown(f"**Maliyet: ₺{o['total_cost']:,.2f}** | **Gerçek Kâr: ₺{real_profit:,.2f}**")
+                    if st.button("Durumu Değiştir", key=f"rev_{o['id']}", use_container_width=True):
+                        try:
+                            db.revert_order_status(o['id'])
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Hata: {e}")
                 elif status == "Hatalı Baskı":
                     st.error("Bu sipariş hatalı baskı olarak işaretlendi.")
                 else:
@@ -642,6 +648,22 @@ def page_settings():
     db_path = os.path.join(os.path.dirname(os.path.abspath(db.__file__)), "atolye.db")
     sz = os.path.getsize(db_path) / 1024 if os.path.exists(db_path) else 0
     st.info(f"DB: {sz:.1f} KB | Filament: {len(db.get_all_filaments())} | Sipariş: {len(db.get_all_orders())} | Gider: {len(db.get_all_expenses())}")
+
+    st.markdown("---")
+    st.subheader("Tehlikeli Bölge")
+    if st.button("Veritabanını Sıfırla", type="secondary"):
+        st.session_state["confirm_reset"] = True
+    if st.session_state.get("confirm_reset"):
+        st.error("Tüm veriler silinecek! Emin misiniz?")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("Evet, Sıfırla", type="primary"):
+                db.reset_database()
+                st.session_state["confirm_reset"] = False
+                st.success("Veritabanı sıfırlandı!"); st.rerun()
+        with c2:
+            if st.button("İptal"):
+                st.session_state["confirm_reset"] = False; st.rerun()
 
 
 def main():
