@@ -394,7 +394,6 @@ def page_pricing():
                 else:
                     photo_path = None
                     if photo:
-                        import os
                         upload_dir = os.path.join(os.path.dirname(os.path.abspath(db.__file__)), "uploads")
                         os.makedirs(upload_dir, exist_ok=True)
                         photo_path = os.path.join(upload_dir, f"order_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{photo.name}")
