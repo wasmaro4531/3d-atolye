@@ -45,7 +45,7 @@ def sidebar():
         st.markdown("---")
         page = st.radio("Modül Seçin", [
             "📊 Dashboard", "🧵 Filament Stok", "💰 Maliyet & ROI",
-            "🏷️ Sipariş Oluştur", "🧾 Gider Yönetimi",
+            "🏷️ Sipariş Oluştur", "📦 Ürünler", "🧾 Gider Yönetimi",
             "⚙️ G-code Optimizasyon", "✅ Kalite Kontrol", "⚙️ Ayarlar",
         ], label_visibility="collapsed")
         st.markdown("---")
@@ -245,6 +245,67 @@ def page_cost_calculator():
                 fig.add_hline(y=settings["printer_price"], line_dash="dash", line_color="red", annotation_text=f"Yatırım: ₺{settings['printer_price']:,.0f}")
                 fig.update_layout(title="Yatırım Geri Dönüşü", xaxis_title="Ay", yaxis_title="Kümülatif Kâr (₺)")
                 st.plotly_chart(fig, use_container_width=True)
+
+
+def page_products():
+    st.title("📦 Ürünler")
+    st.markdown("---")
+    orders = db.get_all_orders()
+    if not orders:
+        st.info("Henüz ürün yok."); return
+
+    tab_all, tab_sold, tab_unsold = st.tabs(["Tümü", "Satılanlar", "Satılmayanlar"])
+
+    def render_product(o):
+        status = o.get("status", "Tamamlandı")
+        qty = o.get("quantity", 1)
+        total_g = o.get("total_grams", 0)
+        fil_str = ", ".join([f"{f['brand']} {f['color']} ({f['grams_used']}g)" for f in o.get("filaments", [])])
+
+        with st.expander(f"#{o['id']} {o['product_name']} | {qty} adet | {status} | {o['created_at']}"):
+            c1, c2 = st.columns([1, 2])
+            with c1:
+                if o.get("photo_path") and os.path.exists(o["photo_path"]):
+                    st.image(o["photo_path"], width=128)
+                else:
+                    st.info("Fotoğraf yok")
+            with c2:
+                st.markdown(f"**Ürün:** {o['product_name']}")
+                st.markdown(f"**Adet:** {qty} | **Toplam Gram:** {total_g:.0f}g | **Birim:** {total_g/qty:.1f}g/adet" if qty > 0 else f"**Toplam Gram:** {total_g:.0f}g")
+                st.markdown(f"**Filament:** {fil_str}")
+                st.markdown(f"**Baskı Süresi:** {o['print_duration_hours']} saat")
+                st.markdown(f"**Maliyet:** ₺{o['total_cost']:,.2f} | **Birim:** ₺{o['total_cost']/qty:,.2f}" if qty > 0 else f"**Maliyet:** ₺{o['total_cost']:,.2f}")
+
+                if status == "Satıldı":
+                    actual = o.get('actual_sale_price') or o['sale_price']
+                    real_p = actual - o['total_cost']
+                    diff = actual - o['sale_price']
+                    st.markdown(f"**Satış:** ₺{actual:,.2f} | **Hesap:** ₺{o['sale_price']:,.2f} | **Fark:** {'+'if diff>=0 else ''}₺{diff:,.2f}")
+                    st.markdown(f"**GERÇEK KÂR:** ₺{real_p:,.2f}")
+                elif status == "Hatalı Baskı":
+                    st.error("Hatalı Baskı")
+                else:
+                    st.markdown(f"**Hesaplanan Satış:** ₺{o['sale_price']:,.2f} | **Hesaplanan Kâr:** ₺{o['profit']:,.2f}")
+
+    with tab_all:
+        for o in orders:
+            render_product(o)
+
+    with tab_sold:
+        sold = [o for o in orders if o.get("status") == "Satıldı"]
+        if sold:
+            for o in sold:
+                render_product(o)
+        else:
+            st.info("Henüz satılmış ürün yok.")
+
+    with tab_unsold:
+        unsold = [o for o in orders if o.get("status") != "Satıldı"]
+        if unsold:
+            for o in unsold:
+                render_product(o)
+        else:
+            st.info("Tüm ürünler satılmış.")
 
 
 def page_pricing():
@@ -673,7 +734,8 @@ def main():
     pages = {
         "📊 Dashboard": page_dashboard, "🧵 Filament Stok": page_filament,
         "💰 Maliyet & ROI": page_cost_calculator, "🏷️ Sipariş Oluştur": page_pricing,
-        "🧾 Gider Yönetimi": page_expenses, "⚙️ G-code Optimizasyon": page_gcode,
+        "📦 Ürünler": page_products, "🧾 Gider Yönetimi": page_expenses,
+        "⚙️ G-code Optimizasyon": page_gcode,
         "✅ Kalite Kontrol": page_quality, "⚙️ Ayarlar": page_settings,
     }
     pages.get(page, lambda: None)()
