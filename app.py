@@ -50,7 +50,7 @@ def sidebar():
         ], label_visibility="collapsed")
         st.markdown("---")
         st.caption("v2.0 | Bambu Lab A1 Optimized")
-        st.caption("Kerem Malkoç & Gürkan Şimşek ortaklığıdır! ©®")
+        st.caption("Bu uygulama Kerem Malkoç & Gürkan Şimşek ortaklığıdır..")
     return page
 
 
