@@ -158,16 +158,19 @@ def page_filament():
                 material_type = st.selectbox("Tür", ["PLA", "PLA+", "PETG", "TPU", "ABS", "ASA", "Nylon", "PC", "Diğer"])
                 color = st.text_input("Renk", placeholder="ör: Kırmızı, Siyah")
             with c2:
-                remaining_grams = st.number_input("Gramaj (g)", min_value=1.0, value=1000.0, step=10.0)
-                purchase_price = st.number_input("Alış Fiyatı (₺)", min_value=0.0, value=350.0, step=10.0)
+                remaining_grams = st.number_input("Alınan Gramaj (g)", min_value=1.0, value=1000.0, step=10.0)
+                spool_grams = st.number_input("Rulo Gramajı (g)", min_value=100.0, value=1000.0, step=100.0, help="Filamentin tam rulo ağırlığı (genelde 1000g)")
+                purchase_price = st.number_input("Rulo Fiyatı (₺)", min_value=0.0, value=350.0, step=10.0, help="Tam rulonun fiyatı")
+                actual_cost = round((remaining_grams / spool_grams) * purchase_price, 2) if spool_grams > 0 else 0
+                st.info(f"Gerçek Maliyet: {remaining_grams:.0f}g / {spool_grams:.0f}g × ₺{purchase_price:,.2f} = **₺{actual_cost:,.2f}**")
                 purchase_date = st.date_input("Alış Tarihi", value=date.today())
                 opening_date = st.date_input("Açılış Tarihi", value=date.today())
             if st.form_submit_button("🧵 Filament Ekle", use_container_width=True, type="primary"):
                 if not brand or not color:
                     st.error("Marka ve Renk zorunludur.")
                 else:
-                    db.add_filament(brand, material_type, color, remaining_grams, purchase_price, purchase_date.strftime("%Y-%m-%d"), opening_date.strftime("%Y-%m-%d"))
-                    st.success(f"✅ {brand} {color} eklendi!")
+                    db.add_filament(brand, material_type, color, remaining_grams, actual_cost, spool_grams, purchase_price, purchase_date.strftime("%Y-%m-%d"), opening_date.strftime("%Y-%m-%d"))
+                    st.success(f"✅ {brand} {color} eklendi! (₺{actual_cost:,.2f})")
                     st.rerun()
 
     with tab_list:
@@ -179,16 +182,18 @@ def page_filament():
             expired = is_shelf_life_exceeded(f["opening_date"])
             remaining = shelf_life_remaining_days(f["opening_date"])
             gp = calculate_gram_price(f["purchase_price"])
-            with st.expander(f"{'⚠️ ' if expired else ''}{f['brand']} {f['color']} ({f['material_type']}) - {f['remaining_grams']:.0f}g | ₺{gp:.2f}/g"):
+            with st.expander(f"{'⚠️ ' if expired else ''}{f['brand']} {f['color']} ({f['material_type']}) - {f['remaining_grams']:.0f}g | ₺{gp:.2f}/g | Maliyet: ₺{f['purchase_price']:,.2f}"):
                 if expired:
-                    st.markdown(f'<div class="warning-card">⚠️ <b>Raf ömrü doldu!</b> Nem kontrolü yapın.</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="warning-card">⚠️ <b>Raf ömrü doldu!</b></div>', unsafe_allow_html=True)
                 elif remaining < 30:
                     st.markdown(f'<div class="info-card">ℹ️ Raf ömrüne {remaining} gün kaldı.</div>', unsafe_allow_html=True)
                 c1, c2, c3 = st.columns(3)
                 c1.metric("Kalan Gram", f"{f['remaining_grams']:.0f}g")
                 c2.metric("Birim Fiyat", f"₺{gp:.2f}/g")
                 c3.metric("Toplam Değer", f"₺{f['remaining_grams'] * gp:,.2f}")
-                st.caption(f"Alış: {f.get('purchase_date', 'N/A')} | Açılış: {f['opening_date']}")
+                spool_g = f.get('spool_grams', 1000)
+                spool_p = f.get('spool_price', 0)
+                st.caption(f"Alış: {f.get('purchase_date', 'N/A')} | Açılış: {f['opening_date']} | Rulo: {spool_g:.0f}g / ₺{spool_p:,.2f}")
                 with st.form(key=f"edit_{f['id']}"):
                     ec1, ec2 = st.columns(2)
                     with ec1:

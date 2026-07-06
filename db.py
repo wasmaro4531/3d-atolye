@@ -35,6 +35,8 @@ def init_db():
             color TEXT NOT NULL,
             remaining_grams REAL NOT NULL DEFAULT 0,
             purchase_price REAL NOT NULL DEFAULT 0,
+            spool_grams REAL NOT NULL DEFAULT 1000,
+            spool_price REAL NOT NULL DEFAULT 0,
             purchase_date TEXT NOT NULL,
             opening_date TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
@@ -114,6 +116,14 @@ def init_db():
         cursor.execute("ALTER TABLE orders ADD COLUMN photo_path TEXT DEFAULT NULL")
     except Exception:
         pass
+    try:
+        cursor.execute("ALTER TABLE filaments ADD COLUMN spool_grams REAL NOT NULL DEFAULT 1000")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE filaments ADD COLUMN spool_price REAL NOT NULL DEFAULT 0")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
@@ -150,13 +160,12 @@ def update_settings(electricity_price_kwh: float, printer_price: float, target_a
     conn.close()
 
 
-def add_filament(brand: str, material_type: str, color: str, remaining_grams: float, purchase_price: float, purchase_date: str, opening_date: str):
+def add_filament(brand: str, material_type: str, color: str, remaining_grams: float, purchase_price: float, spool_grams: float, spool_price: float, purchase_date: str, opening_date: str):
     conn = get_connection()
     cursor = conn.execute(
-        "INSERT INTO filaments (brand, material_type, color, remaining_grams, purchase_price, purchase_date, opening_date) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        (brand, material_type, color, remaining_grams, purchase_price, purchase_date, opening_date),
+        "INSERT INTO filaments (brand, material_type, color, remaining_grams, purchase_price, spool_grams, spool_price, purchase_date, opening_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (brand, material_type, color, remaining_grams, purchase_price, spool_grams, spool_price, purchase_date, opening_date),
     )
-    filament_id = cursor.lastrowid
     if purchase_price > 0:
         conn.execute(
             "INSERT INTO expenses (order_id, description, amount, category) VALUES (NULL, ?, ?, ?)",
@@ -164,7 +173,7 @@ def add_filament(brand: str, material_type: str, color: str, remaining_grams: fl
         )
     conn.commit()
     conn.close()
-    return filament_id
+    return cursor.lastrowid
 
 
 def get_all_filaments() -> list[dict]:
@@ -183,7 +192,7 @@ def get_filament_by_id(filament_id: int) -> dict | None:
 
 def update_filament(filament_id: int, **kwargs):
     conn = get_connection()
-    allowed = {"brand", "material_type", "color", "remaining_grams", "purchase_price", "purchase_date", "opening_date"}
+    allowed = {"brand", "material_type", "color", "remaining_grams", "purchase_price", "spool_grams", "spool_price", "purchase_date", "opening_date"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         conn.close()
