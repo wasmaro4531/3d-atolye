@@ -56,6 +56,7 @@ def init_db():
             quantity INTEGER NOT NULL DEFAULT 1,
             total_grams REAL NOT NULL DEFAULT 0,
             actual_sale_price REAL DEFAULT NULL,
+            photo_path TEXT DEFAULT NULL,
             status TEXT NOT NULL DEFAULT 'Tamamlandı',
             created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
         );
@@ -107,6 +108,10 @@ def init_db():
         pass
     try:
         cursor.execute("ALTER TABLE orders ADD COLUMN actual_sale_price REAL DEFAULT NULL")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE orders ADD COLUMN photo_path TEXT DEFAULT NULL")
     except Exception:
         pass
 
@@ -213,17 +218,18 @@ def add_order(
     expense_items: list[dict],
     quantity: int = 1,
     total_grams: float = 0,
+    photo_path: str | None = None,
 ):
     conn = get_connection()
     cursor = conn.execute(
         """INSERT INTO orders
            (product_name, print_duration_hours, cost_breakdown, total_filament_cost,
             total_expense_cost, electricity_cost, amortization_cost, total_cost,
-            sale_price, profit_margin_pct, profit, quantity, total_grams)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            sale_price, profit_margin_pct, profit, quantity, total_grams, photo_path)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (product_name, print_duration_hours, cost_breakdown, total_filament_cost,
          total_expense_cost, electricity_cost, amortization_cost, total_cost,
-         sale_price, profit_margin_pct, profit, quantity, total_grams),
+         sale_price, profit_margin_pct, profit, quantity, total_grams, photo_path),
     )
     order_id = cursor.lastrowid
 

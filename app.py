@@ -277,6 +277,8 @@ def page_pricing():
         with c_qty:
             quantity = st.number_input("Adet", min_value=1, value=1, step=1)
 
+        photo = st.file_uploader("Ürün Fotoğrafı", type=["jpg", "jpeg", "png", "webp"], key="order_photo")
+
         st.markdown("---")
         st.subheader("2. Filament Seçimi (Toplam Gram)")
         st.caption("Toplam harcanan filament gramını girin. Adet sayısına bölünerek birim maliyet hesaplanır.")
@@ -385,8 +387,16 @@ def page_pricing():
                 elif not fil_items:
                     st.error("En az bir filament seçin.")
                 else:
+                    photo_path = None
+                    if photo:
+                        import os
+                        upload_dir = os.path.join(os.path.dirname(os.path.abspath(db.__file__)), "uploads")
+                        os.makedirs(upload_dir, exist_ok=True)
+                        photo_path = os.path.join(upload_dir, f"order_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{photo.name}")
+                        with open(photo_path, "wb") as f:
+                            f.write(photo.read())
                     oid = db.add_order(product_name, print_hours, json.dumps(cost), cost["filament_cost"], cost["expense_cost"],
-                        cost["electricity_cost"], cost["amortization_cost"], cost["total_cost"], sp, profit_margin, pa, fil_items, exp_clean, quantity, total_grams_sum)
+                        cost["electricity_cost"], cost["amortization_cost"], cost["total_cost"], sp, profit_margin, pa, fil_items, exp_clean, quantity, total_grams_sum, photo_path)
                     st.session_state.order_expenses = []
                     st.success(f"✅ **{product_name}** siparişi oluşturuldu! (#{oid})\n\n{quantity} adet | Toplam: ₺{sp:,.2f} | Birim: ₺{sp/quantity:,.2f} | Kâr: ₺{pa:,.2f}")
                     st.balloons(); st.rerun()
@@ -432,6 +442,9 @@ def page_pricing():
                 if o.get("expenses"):
                     exp_str = ", ".join([f"{e['description']} (₺{e['amount']:,.2f})" for e in o["expenses"]])
                     st.markdown(f"**Ek Giderler:** {exp_str}")
+
+                if o.get("photo_path") and os.path.exists(o["photo_path"]):
+                    st.image(o["photo_path"], caption=o["product_name"], use_container_width=True)
 
                 st.markdown("---")
 
