@@ -433,7 +433,7 @@ def page_pricing():
                     st.markdown(f"**Ek Giderler:** {exp_str}")
 
                 if o.get("photo_path") and os.path.exists(o["photo_path"]):
-                    st.image(o["photo_path"], caption=o["product_name"], use_container_width=True)
+                    st.image(o["photo_path"], caption=o["product_name"], width=128)
 
                 st.markdown("---")
 
