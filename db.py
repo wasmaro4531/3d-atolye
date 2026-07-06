@@ -301,6 +301,7 @@ def get_revenue_summary() -> dict:
             COALESCE(SUM(electricity_cost), 0) as total_electricity_cost,
             COALESCE(SUM(amortization_cost), 0) as total_amortization_cost
         FROM orders
+        WHERE status = 'Satıldı'
     """).fetchone()
     conn.close()
     return dict(row) if row else {
@@ -339,6 +340,7 @@ def get_monthly_revenue() -> list[dict]:
             SUM(total_cost) as cost,
             SUM(profit) as profit
         FROM orders
+        WHERE status = 'Satıldı'
         GROUP BY strftime('%Y-%m', created_at)
         ORDER BY month DESC
         LIMIT 12
