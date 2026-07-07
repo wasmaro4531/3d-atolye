@@ -708,9 +708,7 @@ def page_settings():
             db.update_settings(ep, pp, tah, pn, pw); st.success("Kaydedildi!"); st.rerun()
 
     st.markdown("---")
-    db_path = os.path.join(os.path.dirname(os.path.abspath(db.__file__)), "atolye.db")
-    sz = os.path.getsize(db_path) / 1024 if os.path.exists(db_path) else 0
-    st.info(f"DB: {sz:.1f} KB | Filament: {len(db.get_all_filaments())} | Sipariş: {len(db.get_all_orders())} | Gider: {len(db.get_all_expenses())}")
+    st.info(f"DB: Supabase PostgreSQL | Filament: {len(db.get_all_filaments())} | Sipariş: {len(db.get_all_orders())} | Gider: {len(db.get_all_expenses())}")
 
     st.markdown("---")
     st.subheader("Tehlikeli Bölge")
