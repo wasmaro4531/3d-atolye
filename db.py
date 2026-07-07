@@ -22,7 +22,7 @@ def get_connection():
             port=5432,
             dbname="postgres",
             user="postgres.otkwkdcwcwsmaaqmdawn",
-            password="km65535284594",
+            password="km25866553528",
             sslmode="require",
             connect_timeout=10,
         )
