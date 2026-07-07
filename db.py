@@ -1,16 +1,33 @@
-import sqlite3
+import streamlit as st
+import psycopg2
 import os
 from datetime import datetime
 
 _dir = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(_dir, "atolye.db") if os.path.isdir(_dir) else os.path.join(os.getcwd(), "atolye.db")
+DATABASE_URL = os.environ.get("DATABASE_URL") or st.secrets.get("DATABASE_URL", "")
+
+_db_initialized = False
+
+
+def dict_row(cursor, row):
+    if row is None:
+        return None
+    columns = [col[0] for col in cursor.description]
+    return dict(zip(columns, row))
+
+
+def dict_rows(cursor, rows):
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns, row)) for row in rows]
 
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
+    global _db_initialized
+    if not _db_initialized:
+        init_db()
+        _db_initialized = True
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = False
     return conn
 
 
@@ -18,7 +35,7 @@ def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    cursor.executescript("""
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS settings (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             electricity_price_kwh REAL NOT NULL DEFAULT 4.50,
@@ -29,7 +46,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS filaments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             brand TEXT NOT NULL,
             material_type TEXT NOT NULL,
             color TEXT NOT NULL,
@@ -39,11 +56,11 @@ def init_db():
             spool_price REAL NOT NULL DEFAULT 0,
             purchase_date TEXT NOT NULL,
             opening_date TEXT NOT NULL,
-            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            created_at TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'Europe/Istanbul')::text
         );
 
         CREATE TABLE IF NOT EXISTS orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             product_name TEXT NOT NULL,
             print_duration_hours REAL NOT NULL,
             cost_breakdown TEXT NOT NULL,
@@ -60,11 +77,11 @@ def init_db():
             actual_sale_price REAL DEFAULT NULL,
             photo_path TEXT DEFAULT NULL,
             status TEXT NOT NULL DEFAULT 'Tamamlandı',
-            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            created_at TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'Europe/Istanbul')::text
         );
 
         CREATE TABLE IF NOT EXISTS order_filaments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             order_id INTEGER NOT NULL,
             filament_id INTEGER NOT NULL,
             grams_used REAL NOT NULL,
@@ -74,56 +91,27 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS expenses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             order_id INTEGER,
             description TEXT NOT NULL,
             amount REAL NOT NULL,
             category TEXT NOT NULL DEFAULT 'Diğer',
-            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+            created_at TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'Europe/Istanbul')::text,
             FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL
         );
 
         CREATE TABLE IF NOT EXISTS gcode_analyses (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             filename TEXT NOT NULL,
             original_time_estimate TEXT,
             optimized_time_estimate TEXT,
             lines_optimized INTEGER NOT NULL DEFAULT 0,
             total_lines INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+            created_at TEXT NOT NULL DEFAULT (NOW() AT TIME ZONE 'Europe/Istanbul')::text
         );
 
-        INSERT OR IGNORE INTO settings (id) VALUES (1);
+        INSERT INTO settings (id) VALUES (1) ON CONFLICT DO NOTHING;
     """)
-
-    try:
-        cursor.execute("ALTER TABLE orders ADD COLUMN quantity INTEGER NOT NULL DEFAULT 1")
-    except Exception:
-        pass
-    try:
-        cursor.execute("ALTER TABLE orders ADD COLUMN total_grams REAL NOT NULL DEFAULT 0")
-    except Exception:
-        pass
-    try:
-        cursor.execute("ALTER TABLE filaments ADD COLUMN purchase_date TEXT NOT NULL DEFAULT ''")
-    except Exception:
-        pass
-    try:
-        cursor.execute("ALTER TABLE orders ADD COLUMN actual_sale_price REAL DEFAULT NULL")
-    except Exception:
-        pass
-    try:
-        cursor.execute("ALTER TABLE orders ADD COLUMN photo_path TEXT DEFAULT NULL")
-    except Exception:
-        pass
-    try:
-        cursor.execute("ALTER TABLE filaments ADD COLUMN spool_grams REAL NOT NULL DEFAULT 1000")
-    except Exception:
-        pass
-    try:
-        cursor.execute("ALTER TABLE filaments ADD COLUMN spool_price REAL NOT NULL DEFAULT 0")
-    except Exception:
-        pass
 
     conn.commit()
     conn.close()
@@ -131,10 +119,12 @@ def init_db():
 
 def get_settings() -> dict:
     conn = get_connection()
-    row = conn.execute("SELECT * FROM settings WHERE id = 1").fetchone()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM settings WHERE id = 1")
+    row = dict_row(cursor, cursor.fetchone())
     conn.close()
     if row:
-        return dict(row)
+        return row
     return {
         "electricity_price_kwh": 4.50,
         "printer_price": 15000.0,
@@ -146,13 +136,14 @@ def get_settings() -> dict:
 
 def update_settings(electricity_price_kwh: float, printer_price: float, target_amortization_hours: float, printer_name: str, power_watts: float):
     conn = get_connection()
-    conn.execute(
+    cursor = conn.cursor()
+    cursor.execute(
         """UPDATE settings SET
-           electricity_price_kwh = ?,
-           printer_price = ?,
-           target_amortization_hours = ?,
-           printer_name = ?,
-           power_watts = ?
+           electricity_price_kwh = %s,
+           printer_price = %s,
+           target_amortization_hours = %s,
+           printer_name = %s,
+           power_watts = %s
            WHERE id = 1""",
         (electricity_price_kwh, printer_price, target_amortization_hours, printer_name, power_watts),
     )
@@ -162,51 +153,59 @@ def update_settings(electricity_price_kwh: float, printer_price: float, target_a
 
 def add_filament(brand: str, material_type: str, color: str, remaining_grams: float, purchase_price: float, spool_grams: float, spool_price: float, purchase_date: str, opening_date: str):
     conn = get_connection()
-    cursor = conn.execute(
-        "INSERT INTO filaments (brand, material_type, color, remaining_grams, purchase_price, spool_grams, spool_price, purchase_date, opening_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO filaments (brand, material_type, color, remaining_grams, purchase_price, spool_grams, spool_price, purchase_date, opening_date) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (brand, material_type, color, remaining_grams, purchase_price, spool_grams, spool_price, purchase_date, opening_date),
     )
     if purchase_price > 0:
-        conn.execute(
-            "INSERT INTO expenses (order_id, description, amount, category) VALUES (NULL, ?, ?, ?)",
+        cursor.execute(
+            "INSERT INTO expenses (order_id, description, amount, category) VALUES (NULL, %s, %s, %s)",
             (f"{brand} {color} Filament Alışı ({remaining_grams:.0f}g)", purchase_price, "Filament Alış"),
         )
     conn.commit()
+    filament_id = cursor.lastrowid
     conn.close()
-    return cursor.lastrowid
+    return filament_id
 
 
 def get_all_filaments() -> list[dict]:
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM filaments ORDER BY created_at DESC").fetchall()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM filaments ORDER BY created_at DESC")
+    rows = dict_rows(cursor, cursor.fetchall())
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def get_filament_by_id(filament_id: int) -> dict | None:
     conn = get_connection()
-    row = conn.execute("SELECT * FROM filaments WHERE id = ?", (filament_id,)).fetchone()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM filaments WHERE id = %s", (filament_id,))
+    row = dict_row(cursor, cursor.fetchone())
     conn.close()
-    return dict(row) if row else None
+    return row
 
 
 def update_filament(filament_id: int, **kwargs):
     conn = get_connection()
+    cursor = conn.cursor()
     allowed = {"brand", "material_type", "color", "remaining_grams", "purchase_price", "spool_grams", "spool_price", "purchase_date", "opening_date"}
     fields = {k: v for k, v in kwargs.items() if k in allowed}
     if not fields:
         conn.close()
         return
-    set_clause = ", ".join(f"{k} = ?" for k in fields)
+    set_clause = ", ".join(f"{k} = %s" for k in fields)
     values = list(fields.values()) + [filament_id]
-    conn.execute(f"UPDATE filaments SET {set_clause} WHERE id = ?", values)
+    cursor.execute(f"UPDATE filaments SET {set_clause} WHERE id = %s", values)
     conn.commit()
     conn.close()
 
 
 def delete_filament(filament_id: int):
     conn = get_connection()
-    conn.execute("DELETE FROM filaments WHERE id = ?", (filament_id,))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM filaments WHERE id = %s", (filament_id,))
     conn.commit()
     conn.close()
 
@@ -230,12 +229,13 @@ def add_order(
     photo_path: str | None = None,
 ):
     conn = get_connection()
-    cursor = conn.execute(
+    cursor = conn.cursor()
+    cursor.execute(
         """INSERT INTO orders
            (product_name, print_duration_hours, cost_breakdown, total_filament_cost,
             total_expense_cost, electricity_cost, amortization_cost, total_cost,
             sale_price, profit_margin_pct, profit, quantity, total_grams, photo_path)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
         (product_name, print_duration_hours, cost_breakdown, total_filament_cost,
          total_expense_cost, electricity_cost, amortization_cost, total_cost,
          sale_price, profit_margin_pct, profit, quantity, total_grams, photo_path),
@@ -243,18 +243,18 @@ def add_order(
     order_id = cursor.lastrowid
 
     for item in filament_items:
-        conn.execute(
-            "INSERT INTO order_filaments (order_id, filament_id, grams_used, filament_cost) VALUES (?, ?, ?, ?)",
+        cursor.execute(
+            "INSERT INTO order_filaments (order_id, filament_id, grams_used, filament_cost) VALUES (%s, %s, %s, %s)",
             (order_id, item["filament_id"], item["grams_used"], item["filament_cost"]),
         )
-        conn.execute(
-            "UPDATE filaments SET remaining_grams = MAX(remaining_grams - ?, 0) WHERE id = ?",
+        cursor.execute(
+            "UPDATE filaments SET remaining_grams = GREATEST(remaining_grams - %s, 0) WHERE id = %s",
             (item["grams_used"], item["filament_id"]),
         )
 
     for item in expense_items:
-        conn.execute(
-            "INSERT INTO expenses (order_id, description, amount, category) VALUES (?, ?, ?, ?)",
+        cursor.execute(
+            "INSERT INTO expenses (order_id, description, amount, category) VALUES (%s, %s, %s, %s)",
             (order_id, item["description"], item["amount"], item["category"]),
         )
 
@@ -265,19 +265,23 @@ def add_order(
 
 def get_order_filaments(order_id: int) -> list[dict]:
     conn = get_connection()
-    rows = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         SELECT of2.*, f.brand, f.material_type, f.color
         FROM order_filaments of2
         LEFT JOIN filaments f ON of2.filament_id = f.id
-        WHERE of2.order_id = ?
-    """, (order_id,)).fetchall()
+        WHERE of2.order_id = %s
+    """, (order_id,))
+    rows = dict_rows(cursor, cursor.fetchall())
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def get_all_orders() -> list[dict]:
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM orders ORDER BY created_at DESC").fetchall()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM orders ORDER BY created_at DESC")
+    rows = dict_rows(cursor, cursor.fetchall())
     orders = []
     for row in rows:
         order = dict(row)
@@ -290,7 +294,8 @@ def get_all_orders() -> list[dict]:
 
 def get_revenue_summary() -> dict:
     conn = get_connection()
-    row = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         SELECT
             COUNT(*) as total_orders,
             COALESCE(SUM(sale_price), 0) as total_revenue,
@@ -302,9 +307,10 @@ def get_revenue_summary() -> dict:
             COALESCE(SUM(amortization_cost), 0) as total_amortization_cost
         FROM orders
         WHERE status = 'Satıldı'
-    """).fetchone()
+    """)
+    row = dict_row(cursor, cursor.fetchone())
     conn.close()
-    return dict(row) if row else {
+    return row if row else {
         "total_orders": 0, "total_revenue": 0, "total_cost": 0, "total_profit": 0,
         "total_filament_cost": 0, "total_expense_cost": 0,
         "total_electricity_cost": 0, "total_amortization_cost": 0,
@@ -313,7 +319,8 @@ def get_revenue_summary() -> dict:
 
 def get_actual_sales_summary() -> dict:
     conn = get_connection()
-    row = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         SELECT
             COUNT(*) as sold_count,
             COALESCE(SUM(actual_sale_price), 0) as actual_revenue,
@@ -322,9 +329,10 @@ def get_actual_sales_summary() -> dict:
             COALESCE(SUM(actual_sale_price - sale_price), 0) as price_diff
         FROM orders
         WHERE status = 'Satıldı' AND actual_sale_price IS NOT NULL
-    """).fetchone()
+    """)
+    row = dict_row(cursor, cursor.fetchone())
     conn.close()
-    return dict(row) if row else {
+    return row if row else {
         "sold_count": 0, "actual_revenue": 0, "sold_cost": 0,
         "actual_profit": 0, "price_diff": 0,
     }
@@ -332,27 +340,30 @@ def get_actual_sales_summary() -> dict:
 
 def get_monthly_revenue() -> list[dict]:
     conn = get_connection()
-    rows = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         SELECT
-            strftime('%Y-%m', created_at) as month,
+            TO_CHAR(created_at::timestamp, 'YYYY-MM') as month,
             COUNT(*) as order_count,
             SUM(sale_price) as revenue,
             SUM(total_cost) as cost,
             SUM(profit) as profit
         FROM orders
         WHERE status = 'Satıldı'
-        GROUP BY strftime('%Y-%m', created_at)
+        GROUP BY TO_CHAR(created_at::timestamp, 'YYYY-MM')
         ORDER BY month DESC
         LIMIT 12
-    """).fetchall()
+    """)
+    rows = dict_rows(cursor, cursor.fetchall())
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def save_gcode_analysis(filename: str, original_time: str, optimized_time: str, lines_optimized: int, total_lines: int):
     conn = get_connection()
-    conn.execute(
-        "INSERT INTO gcode_analyses (filename, original_time_estimate, optimized_time_estimate, lines_optimized, total_lines) VALUES (?, ?, ?, ?, ?)",
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO gcode_analyses (filename, original_time_estimate, optimized_time_estimate, lines_optimized, total_lines) VALUES (%s, %s, %s, %s, %s)",
         (filename, original_time, optimized_time, lines_optimized, total_lines),
     )
     conn.commit()
@@ -361,15 +372,18 @@ def save_gcode_analysis(filename: str, original_time: str, optimized_time: str, 
 
 def get_gcode_analyses() -> list[dict]:
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM gcode_analyses ORDER BY created_at DESC LIMIT 20").fetchall()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM gcode_analyses ORDER BY created_at DESC LIMIT 20")
+    rows = dict_rows(cursor, cursor.fetchall())
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def add_expense(description: str, amount: float, category: str, order_id: int | None = None):
     conn = get_connection()
-    conn.execute(
-        "INSERT INTO expenses (order_id, description, amount, category) VALUES (?, ?, ?, ?)",
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO expenses (order_id, description, amount, category) VALUES (%s, %s, %s, %s)",
         (order_id, description, amount, category),
     )
     conn.commit()
@@ -378,57 +392,68 @@ def add_expense(description: str, amount: float, category: str, order_id: int | 
 
 def get_all_expenses() -> list[dict]:
     conn = get_connection()
-    rows = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         SELECT e.*, o.product_name
         FROM expenses e
         LEFT JOIN orders o ON e.order_id = o.id
         ORDER BY e.created_at DESC
-    """).fetchall()
+    """)
+    rows = dict_rows(cursor, cursor.fetchall())
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def get_order_expenses(order_id: int) -> list[dict]:
     conn = get_connection()
-    rows = conn.execute("SELECT * FROM expenses WHERE order_id = ?", (order_id,)).fetchall()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM expenses WHERE order_id = %s", (order_id,))
+    rows = dict_rows(cursor, cursor.fetchall())
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def delete_expense(expense_id: int):
     conn = get_connection()
-    conn.execute("DELETE FROM expenses WHERE id = ?", (expense_id,))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM expenses WHERE id = %s", (expense_id,))
     conn.commit()
     conn.close()
 
 
 def get_expense_summary() -> dict:
     conn = get_connection()
-    row = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         SELECT
             COALESCE(SUM(amount), 0) as total_expenses,
             COUNT(*) as expense_count
         FROM expenses
-    """).fetchone()
+    """)
+    row = dict_row(cursor, cursor.fetchone())
     conn.close()
-    return dict(row) if row else {"total_expenses": 0, "expense_count": 0}
+    return row if row else {"total_expenses": 0, "expense_count": 0}
 
 
 def get_expenses_by_category() -> list[dict]:
     conn = get_connection()
-    rows = conn.execute("""
+    cursor = conn.cursor()
+    cursor.execute("""
         SELECT category, SUM(amount) as total, COUNT(*) as count
         FROM expenses
         GROUP BY category
         ORDER BY total DESC
-    """).fetchall()
+    """)
+    rows = dict_rows(cursor, cursor.fetchall())
     conn.close()
-    return [dict(r) for r in rows]
+    return rows
 
 
 def get_order_by_id(order_id: int) -> dict | None:
     conn = get_connection()
-    row = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM orders WHERE id = %s", (order_id,))
+    row = dict_row(cursor, cursor.fetchone())
     if row:
         order = dict(row)
         order["filaments"] = get_order_filaments(order["id"])
@@ -441,27 +466,27 @@ def get_order_by_id(order_id: int) -> dict | None:
 
 def update_order_status(order_id: int, status: str):
     conn = get_connection()
-    conn.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
+    cursor = conn.cursor()
+    cursor.execute("UPDATE orders SET status = %s WHERE id = %s", (status, order_id))
     conn.commit()
     conn.close()
 
 
 def delete_order(order_id: int):
     conn = get_connection()
-    try:
-        conn.execute("PRAGMA foreign_keys = OFF")
-        conn.execute("DELETE FROM order_filaments WHERE order_id = ?", (order_id,))
-        conn.execute("DELETE FROM expenses WHERE order_id = ?", (order_id,))
-        conn.execute("DELETE FROM orders WHERE id = ?", (order_id,))
-        conn.commit()
-    finally:
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.close()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM order_filaments WHERE order_id = %s", (order_id,))
+    cursor.execute("DELETE FROM expenses WHERE order_id = %s", (order_id,))
+    cursor.execute("DELETE FROM orders WHERE id = %s", (order_id,))
+    conn.commit()
+    conn.close()
 
 
 def mark_defective_print(order_id: int, elapsed_hours: float) -> dict:
     conn = get_connection()
-    order = conn.execute("SELECT * FROM orders WHERE id = ?", (order_id,)).fetchone()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM orders WHERE id = %s", (order_id,))
+    order = dict_row(cursor, cursor.fetchone())
     if not order:
         conn.close()
         return {"error": "Sipariş bulunamadı"}
@@ -477,20 +502,19 @@ def mark_defective_print(order_id: int, elapsed_hours: float) -> dict:
     ratio = min(elapsed_hours / total_hours, 1.0)
     consumed_grams = round(total_grams * ratio, 2)
 
-    filaments = conn.execute(
-        "SELECT * FROM order_filaments WHERE order_id = ?", (order_id,)
-    ).fetchall()
+    cursor.execute("SELECT * FROM order_filaments WHERE order_id = %s", (order_id,))
+    filaments = dict_rows(cursor, cursor.fetchall())
 
     for f in filaments:
         f_ratio = f["grams_used"] / total_grams if total_grams > 0 else 0
         fil_consumed = round(consumed_grams * f_ratio, 2)
-        conn.execute(
-            "UPDATE filaments SET remaining_grams = MAX(remaining_grams - ?, 0) WHERE id = ?",
+        cursor.execute(
+            "UPDATE filaments SET remaining_grams = GREATEST(remaining_grams - %s, 0) WHERE id = %s",
             (fil_consumed, f["filament_id"]),
         )
 
-    conn.execute(
-        "UPDATE orders SET status = 'Hatalı Baskı' WHERE id = ?", (order_id,)
+    cursor.execute(
+        "UPDATE orders SET status = 'Hatalı Baskı' WHERE id = %s", (order_id,)
     )
     conn.commit()
     conn.close()
@@ -500,26 +524,24 @@ def mark_defective_print(order_id: int, elapsed_hours: float) -> dict:
 
 def mark_as_sold(order_id: int, actual_sale_price: float):
     conn = get_connection()
-    try:
-        conn.execute(
-            "UPDATE orders SET status = 'Satıldı', actual_sale_price = ? WHERE id = ?",
-            (actual_sale_price, order_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE orders SET status = 'Satıldı', actual_sale_price = %s WHERE id = %s",
+        (actual_sale_price, order_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def revert_order_status(order_id: int):
     conn = get_connection()
-    try:
-        conn.execute(
-            "UPDATE orders SET status = 'Tamamlandı', actual_sale_price = NULL WHERE id = ?",
-            (order_id,),
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE orders SET status = 'Tamamlandı', actual_sale_price = NULL WHERE id = %s",
+        (order_id,),
+    )
+    conn.commit()
+    conn.close()
 
 
 def reset_database():
@@ -534,6 +556,3 @@ def reset_database():
     cursor.execute("INSERT INTO settings (id) VALUES (1)")
     conn.commit()
     conn.close()
-
-
-init_db()
