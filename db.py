@@ -12,20 +12,18 @@ def get_connection():
         except Exception:
             db_url = ""
     if not db_url:
-        raise Exception("DATABASE_URL bulunamadı! Streamlit Cloud > Secrets kısmına ekleyin.")
+        raise Exception("DATABASE_URL bulunamadı!")
 
-    try:
-        conn = psycopg2.connect(db_url, sslmode="require", connect_timeout=10)
-    except Exception:
-        conn = psycopg2.connect(
-            host="db.otkwkdcwcwsmaaqmdawn.supabase.co",
-            port=5432,
-            dbname="postgres",
-            user="postgres.otkwkdcwcwsmaaqmdawn",
-            password="km25866553528",
-            sslmode="require",
-            connect_timeout=10,
-        )
+    import urllib.parse
+    parsed = urllib.parse.urlparse(db_url)
+    conn = psycopg2.connect(
+        host=parsed.hostname,
+        port=parsed.port or 5432,
+        dbname=parsed.path.lstrip("/"),
+        user=parsed.username,
+        password=urllib.parse.unquote(parsed.password) if parsed.password else "",
+        sslmode="require",
+    )
     conn.autocommit = False
     ensure_db()
     return conn
