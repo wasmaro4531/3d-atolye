@@ -5,7 +5,14 @@ import psycopg2.extras
 
 
 def get_connection():
-    db_url = os.environ.get("DATABASE_URL") or st.secrets.get("DATABASE_URL", "")
+    db_url = os.environ.get("DATABASE_URL", "")
+    if not db_url:
+        try:
+            db_url = st.secrets["DATABASE_URL"]
+        except Exception:
+            db_url = ""
+    if not db_url:
+        raise Exception("DATABASE_URL bulunamadı! Streamlit Cloud > Secrets kısmına ekleyin.")
     conn = psycopg2.connect(db_url)
     conn.autocommit = False
     return conn
