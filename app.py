@@ -708,7 +708,7 @@ def page_settings():
             db.update_settings(ep, pp, tah, pn, pw); st.success("Kaydedildi!"); st.rerun()
 
     st.markdown("---")
-    st.info(f"DB: Supabase PostgreSQL | Filament: {len(db.get_all_filaments())} | Sipariş: {len(db.get_all_orders())} | Gider: {len(db.get_all_expenses())}")
+    st.info(f"DB: SQLite | Filament: {len(db.get_all_filaments())} | Sipariş: {len(db.get_all_orders())} | Gider: {len(db.get_all_expenses())}")
 
     st.markdown("---")
     st.subheader("Tehlikeli Bölge")
