@@ -32,7 +32,8 @@ def get_connection():
 
 
 def init_db():
-    conn = get_connection()
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.autocommit = False
     cursor = conn.cursor()
 
     cursor.execute("""
