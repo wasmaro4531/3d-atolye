@@ -27,6 +27,7 @@ def get_connection():
             connect_timeout=10,
         )
     conn.autocommit = False
+    ensure_db()
     return conn
 
 
@@ -588,4 +589,10 @@ def reset_database():
     conn.close()
 
 
-init_db()
+_db_initialized = False
+
+def ensure_db():
+    global _db_initialized
+    if not _db_initialized:
+        init_db()
+        _db_initialized = True
