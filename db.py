@@ -13,7 +13,7 @@ def get_connection():
             db_url = ""
     if not db_url:
         raise Exception("DATABASE_URL bulunamadı! Streamlit Cloud > Secrets kısmına ekleyin.")
-    conn = psycopg2.connect(db_url)
+    conn = psycopg2.connect(db_url, sslmode="require")
     conn.autocommit = False
     return conn
 
